@@ -1,0 +1,2 @@
+s/.*on_dump_metadata_binding_pressed: \(\(behavior\|param\) \(mouse_key_press\|behavior_stp_indicators\) .*\)/\1/p
+s/.*on_dump_metadata_binding_pressed: \(layer .*\)/\1/p
