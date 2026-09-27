@@ -119,8 +119,36 @@ static const struct behavior_parameter_metadata_set hsv_value_metadata_set = {
 
 */
 
+static const struct behavior_parameter_value_metadata effect_p1_value_metadata_values[] = {
+    {
+        .display_name = "Set effect",
+        .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE,
+        .value = RGB_EFS_CMD,
+    },
+    {
+        .display_name = "Set Momentary Effect",
+        .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE,
+        .value = RGB_MEFS_CMD,
+    },
+};
+
+static const struct behavior_parameter_value_metadata effect_p2_value_metadata_values[] = {
+    {
+        .display_name = "Effect",
+        .type = BEHAVIOR_PARAMETER_VALUE_TYPE_RANGE,
+        .range = {.min = 0, .max = 6},
+    },
+};
+
+static const struct behavior_parameter_metadata_set effect_value_metadata_set = {
+    .param1_values = effect_p1_value_metadata_values,
+    .param1_values_len = ARRAY_SIZE(effect_p1_value_metadata_values),
+    .param2_values = effect_p2_value_metadata_values,
+    .param2_values_len = ARRAY_SIZE(effect_p2_value_metadata_values),
+};
+
 static const struct behavior_parameter_metadata_set sets[] = {
-    no_args_set,
+    no_args_set, effect_value_metadata_set,
     // hsv_value_metadata_set,
 };
 
@@ -130,6 +158,9 @@ static const struct behavior_parameter_metadata metadata = {
 };
 
 #endif // IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
+
+// Effect to restore when a RGB_MEFS_CMD key is released.
+static uint8_t old_effect;
 
 static int
 on_keymap_binding_convert_central_state_dependent_params(struct zmk_behavior_binding *binding,
@@ -209,6 +240,7 @@ on_keymap_binding_convert_central_state_dependent_params(struct zmk_behavior_bin
 
 static int on_keymap_binding_pressed(struct zmk_behavior_binding *binding,
                                      struct zmk_behavior_binding_event event) {
+    LOG_DBG("RGB behaviour triggered (%d/%d)", binding->param1, binding->param2);
     switch (binding->param1) {
     case RGB_TOG_CMD:
         return zmk_rgb_underglow_toggle();
@@ -234,6 +266,9 @@ static int on_keymap_binding_pressed(struct zmk_behavior_binding *binding,
         return zmk_rgb_underglow_change_spd(-1);
     case RGB_EFS_CMD:
         return zmk_rgb_underglow_select_effect(binding->param2);
+    case RGB_MEFS_CMD:
+        old_effect = zmk_rgb_underglow_calc_effect(0);
+        return zmk_rgb_underglow_select_effect(binding->param2);
     case RGB_EFF_CMD:
         return zmk_rgb_underglow_cycle_effect(1);
     case RGB_EFR_CMD:
@@ -249,6 +284,9 @@ static int on_keymap_binding_pressed(struct zmk_behavior_binding *binding,
 
 static int on_keymap_binding_released(struct zmk_behavior_binding *binding,
                                       struct zmk_behavior_binding_event event) {
+    if (binding->param1 == RGB_MEFS_CMD) {
+        return zmk_rgb_underglow_select_effect(old_effect);
+    }
     return ZMK_BEHAVIOR_OPAQUE;
 }
 
@@ -257,7 +295,8 @@ static const struct behavior_driver_api behavior_rgb_underglow_driver_api = {
         on_keymap_binding_convert_central_state_dependent_params,
     .binding_pressed = on_keymap_binding_pressed,
     .binding_released = on_keymap_binding_released,
-    .locality = BEHAVIOR_LOCALITY_GLOBAL,
+    // Central only: the central syncs effect and on/off to the peripheral (C3).
+    .locality = BEHAVIOR_LOCALITY_CENTRAL,
 #if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
     .parameter_metadata = &metadata,
 #endif
