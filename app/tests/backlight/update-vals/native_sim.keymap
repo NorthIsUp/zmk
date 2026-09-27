@@ -1,0 +1,14 @@
+#include "../behavior_keymap.dtsi"
+
+/* update_vals.c applies three peripheral states at boot; the keys then
+ * prove the last one (brightness 80, off) was stored, not just displayed. */
+&kscan {
+    events = <
+        /* BL_ON: 80 */
+        ZMK_MOCK_PRESS(1,0,10)
+        ZMK_MOCK_RELEASE(1,0,10)
+        /* BL_DEC: 60 */
+        ZMK_MOCK_PRESS(0,1,10)
+        ZMK_MOCK_RELEASE(0,1,10)
+    >;
+};

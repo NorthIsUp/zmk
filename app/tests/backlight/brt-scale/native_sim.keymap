@@ -1,0 +1,26 @@
+#include "../behavior_keymap.dtsi"
+
+&kscan {
+    events = <
+        /* BL_INC: already at BRT_START 100, stays 100 */
+        ZMK_MOCK_PRESS(0,0,10)
+        ZMK_MOCK_RELEASE(0,0,10)
+        /* BL_DEC x5: 80, 60, 40, 20, 0 */
+        ZMK_MOCK_PRESS(0,1,10)
+        ZMK_MOCK_RELEASE(0,1,10)
+        ZMK_MOCK_PRESS(0,1,10)
+        ZMK_MOCK_RELEASE(0,1,10)
+        ZMK_MOCK_PRESS(0,1,10)
+        ZMK_MOCK_RELEASE(0,1,10)
+        ZMK_MOCK_PRESS(0,1,10)
+        ZMK_MOCK_RELEASE(0,1,10)
+        ZMK_MOCK_PRESS(0,1,10)
+        ZMK_MOCK_RELEASE(0,1,10)
+        /* BL_ON: brightness 0 -> BRT_STEP 20 */
+        ZMK_MOCK_PRESS(1,0,10)
+        ZMK_MOCK_RELEASE(1,0,10)
+        /* BL_INC: 40 */
+        ZMK_MOCK_PRESS(0,0,10)
+        ZMK_MOCK_RELEASE(0,0,10)
+    >;
+};
