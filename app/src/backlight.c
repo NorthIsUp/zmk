@@ -34,16 +34,11 @@ static const struct device *const backlight_dev = DEVICE_DT_GET(DT_CHOSEN(zmk_ba
 
 #define BRT_MAX 100
 
-struct backlight_state {
-    uint8_t brightness;
-    bool on;
-};
-
 static struct backlight_state state = {.brightness = CONFIG_ZMK_BACKLIGHT_BRT_START,
                                        .on = IS_ENABLED(CONFIG_ZMK_BACKLIGHT_ON_START)};
 
 static int zmk_backlight_update(void) {
-    uint8_t brt = zmk_backlight_get_brt();
+    uint8_t brt = ((zmk_backlight_get_brt() * CONFIG_ZMK_BACKLIGHT_BRT_SCALE) / 100);
     LOG_DBG("Update backlight brightness: %d%%", brt);
 
     for (int i = 0; i < BACKLIGHT_NUM_LEDS; i++) {
@@ -126,6 +121,13 @@ int zmk_backlight_off(void) {
 }
 
 int zmk_backlight_toggle(void) { return state.on ? zmk_backlight_off() : zmk_backlight_on(); }
+
+int zmk_backlight_update_vals(struct backlight_state new_state) {
+    state.on = new_state.on;
+    // Comes off the split link: clamp like zmk_backlight_set_brt does.
+    state.brightness = MIN(new_state.brightness, BRT_MAX);
+    return zmk_backlight_update_and_save();
+}
 
 bool zmk_backlight_is_on(void) { return state.on; }
 
