@@ -1,0 +1,2 @@
+s/.*\(No behavior assigned.*\)/\1/p
+s/.*hid_listener_keycode/kp/p
