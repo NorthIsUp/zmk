@@ -66,6 +66,8 @@ enum zmk_split_transport_central_command_type {
     ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_INVOKE_BEHAVIOR,
     ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_SET_PHYSICAL_LAYOUT,
     ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_SET_HID_INDICATORS,
+    ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_SET_KINESIS_LED,
+    ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_SET_KINESIS_BACKLIGHT,
 } __packed;
 
 struct zmk_split_transport_central_command {
@@ -87,5 +89,16 @@ struct zmk_split_transport_central_command {
         struct {
             zmk_hid_indicators_t indicators;
         } set_hid_indicators;
+
+        struct {
+            uint8_t layer;  // highest active layer on central
+            uint8_t effect; // rgb underglow effect index
+            bool on;
+        } set_kinesis_led;
+
+        struct {
+            uint8_t brightness; // 0-100, unscaled; each half applies its own BRT_SCALE
+            bool on;
+        } set_kinesis_backlight;
     } data;
 } __packed;

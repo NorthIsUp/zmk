@@ -76,6 +76,12 @@ if ls $(pwd)/$testcase/peripheral*.overlay >/dev/null 2>&1; then
     extra_cmake_args="-DCONFIG_ZMK_SPLIT_ROLE_CENTRAL=y"
 fi
 
+# A testcase that is itself a zephyr module adds its own sources to the central, to drive
+# central APIs that no host or keymap event reaches.
+if [ -f "$testcase/zephyr/module.yml" ]; then
+    extra_cmake_args="${extra_cmake_args} -DZMK_EXTRA_MODULES=$(pwd)/$testcase"
+fi
+
 west build -d build/$testcase -b nrf52_bsim//zmk_test_mock -- -DZMK_CONFIG="$(pwd)/$testcase" ${extra_cmake_args} > /dev/null 2>&1
 if [ $? -gt 0 ]; then
     echo "FAILED: $testcase did not build" | tee -a ./build/tests/pass-fail.log

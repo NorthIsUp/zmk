@@ -22,6 +22,14 @@
 #include <zmk/events/hid_indicators_changed.h>
 #endif
 
+#if IS_ENABLED(CONFIG_ZMK_RGB_UNDERGLOW)
+#include <zmk/rgb_underglow.h>
+#endif
+
+#if IS_ENABLED(CONFIG_ZMK_BACKLIGHT)
+#include <zmk/backlight.h>
+#endif
+
 #include <zephyr/init.h>
 #include <zephyr/logging/log.h>
 
@@ -66,6 +74,34 @@ int zmk_split_transport_peripheral_command_handler(
             .indicators = cmd.data.set_hid_indicators.indicators});
     }
 #endif
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_KINESIS_SYNC)
+    case ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_SET_KINESIS_LED: {
+        LOG_DBG("Kinesis LED: layer %d effect %d on %d", cmd.data.set_kinesis_led.layer,
+                cmd.data.set_kinesis_led.effect, cmd.data.set_kinesis_led.on);
+#if IS_ENABLED(CONFIG_ZMK_RGB_UNDERGLOW)
+        // Indicators arrive separately, as SET_HID_INDICATORS (K1).
+        return zmk_rgb_underglow_set_periph((struct zmk_periph_led){
+            .layer = cmd.data.set_kinesis_led.layer,
+            .effect = cmd.data.set_kinesis_led.effect,
+            .on = cmd.data.set_kinesis_led.on,
+        });
+#else
+        return 0;
+#endif
+    }
+    case ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_SET_KINESIS_BACKLIGHT: {
+        LOG_DBG("Kinesis backlight: brightness %d on %d", cmd.data.set_kinesis_backlight.brightness,
+                cmd.data.set_kinesis_backlight.on);
+#if IS_ENABLED(CONFIG_ZMK_BACKLIGHT)
+        return zmk_backlight_update_vals((struct backlight_state){
+            .brightness = cmd.data.set_kinesis_backlight.brightness,
+            .on = cmd.data.set_kinesis_backlight.on,
+        });
+#else
+        return 0;
+#endif
+    }
+#endif // IS_ENABLED(CONFIG_ZMK_SPLIT_KINESIS_SYNC)
     default:
         LOG_WRN("Unhandled command type %d", cmd.type);
         return -ENOTSUP;
