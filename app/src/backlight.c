@@ -43,7 +43,7 @@ static struct backlight_state state = {.brightness = CONFIG_ZMK_BACKLIGHT_BRT_ST
                                        .on = IS_ENABLED(CONFIG_ZMK_BACKLIGHT_ON_START)};
 
 static int zmk_backlight_update(void) {
-    uint8_t brt = zmk_backlight_get_brt();
+    uint8_t brt = ((zmk_backlight_get_brt() * CONFIG_ZMK_BACKLIGHT_BRT_SCALE) / 100);
     LOG_DBG("Update backlight brightness: %d%%", brt);
 
     for (int i = 0; i < BACKLIGHT_NUM_LEDS; i++) {

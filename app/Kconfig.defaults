@@ -98,7 +98,7 @@ config ZMK_BACKLIGHT_BRT_STEP
     default 20
 
 config ZMK_BACKLIGHT_BRT_START
-    default 40
+    default 100
 
 config ZMK_BACKLIGHT_ON_START
     default y
