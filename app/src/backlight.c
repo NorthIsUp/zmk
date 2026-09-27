@@ -19,6 +19,9 @@
 #include <zmk/event_manager.h>
 #include <zmk/events/activity_state_changed.h>
 #include <zmk/events/usb_conn_state_changed.h>
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL) && IS_ENABLED(CONFIG_ZMK_SPLIT_KINESIS_SYNC)
+#include <zmk/split/central.h>
+#endif
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -40,6 +43,14 @@ static struct backlight_state state = {.brightness = CONFIG_ZMK_BACKLIGHT_BRT_ST
 static int zmk_backlight_update(void) {
     uint8_t brt = ((zmk_backlight_get_brt() * CONFIG_ZMK_BACKLIGHT_BRT_SCALE) / 100);
     LOG_DBG("Update backlight brightness: %d%%", brt);
+
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL) && IS_ENABLED(CONFIG_ZMK_SPLIT_KINESIS_SYNC)
+    // Unscaled: the peripheral applies its own BRT_SCALE (S1 Review Focus 1).
+    int err = zmk_split_central_update_kinesis_backlight(state.brightness, state.on);
+    if (err) {
+        LOG_ERR("Kinesis backlight sync failed (err %d)", err);
+    }
+#endif
 
     for (int i = 0; i < BACKLIGHT_NUM_LEDS; i++) {
         int rc = led_set_brightness(backlight_dev, i, brt);
