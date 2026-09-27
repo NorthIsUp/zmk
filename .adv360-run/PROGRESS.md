@@ -10,3 +10,4 @@
 - task S1-T3: merged
 - task S2-T3: merged
 - task S4-T3: merged
+- task S4-T2: merged
