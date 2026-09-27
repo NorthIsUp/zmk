@@ -1,0 +1,42 @@
+#include <dt-bindings/zmk/keys.h>
+#include <dt-bindings/zmk/stp.h>
+#include <behaviors.dtsi>
+#include <dt-bindings/zmk/kscan_mock.h>
+#include "../underglow.dtsi"
+
+/ {
+    behaviors {
+        dump: dump_metadata {
+            compatible = "zmk,behavior-dump-metadata";
+            #binding-cells = <0>;
+        };
+    };
+
+    // Layer shape of the user's adv360.keymap: named okay layers, then a reserved one.
+    keymap {
+        compatible = "zmk,keymap";
+
+        base {
+            display-name = "Base";
+            bindings = <
+                &dump &stp STP_BAT
+                &mkp LCLK &mo 1>;
+        };
+
+        mod {
+            display-name = "Mod";
+            bindings = <
+                &trans &trans
+                &trans &trans>;
+        };
+
+        red {
+            display-name = "Red";
+            status = "reserved";
+        };
+    };
+};
+
+&kscan {
+    events = <ZMK_MOCK_PRESS(0,0,10) ZMK_MOCK_RELEASE(0,0,10)>;
+};

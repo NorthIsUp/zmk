@@ -1,0 +1,39 @@
+#include <dt-bindings/zmk/keys.h>
+#include <behaviors.dtsi>
+#include <dt-bindings/zmk/kscan_mock.h>
+
+/ {
+    behaviors {
+        // Disabled, so no device exists: a binding to it has no behavior at runtime.
+        gone: gone {
+            compatible = "zmk,behavior-key-press";
+            #binding-cells = <1>;
+            status = "disabled";
+        };
+    };
+
+    keymap {
+        compatible = "zmk,keymap";
+
+        default_layer {
+            bindings = <
+                &kp A &mo 1
+                &kp C &kp D>;
+        };
+
+        missing_layer {
+            bindings = <
+                &gone B &trans
+                &trans &trans>;
+        };
+    };
+};
+
+&kscan {
+    events = <
+    ZMK_MOCK_PRESS(0,1,10)
+    ZMK_MOCK_PRESS(0,0,10)
+    ZMK_MOCK_RELEASE(0,0,10)
+    ZMK_MOCK_RELEASE(0,1,10)
+    >;
+};
