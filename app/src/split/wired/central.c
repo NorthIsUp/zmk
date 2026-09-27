@@ -185,6 +185,10 @@ static ssize_t get_payload_data_size(const struct zmk_split_transport_central_co
         return sizeof(cmd->data.set_physical_layout);
     case ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_SET_HID_INDICATORS:
         return sizeof(cmd->data.set_hid_indicators);
+    case ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_SET_KINESIS_LED:
+        return sizeof(cmd->data.set_kinesis_led);
+    case ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_SET_KINESIS_BACKLIGHT:
+        return sizeof(cmd->data.set_kinesis_backlight);
     default:
         return -ENOTSUP;
     }

@@ -41,6 +41,15 @@ int zmk_split_central_update_hid_indicator(zmk_hid_indicators_t indicators);
 
 #endif // IS_ENABLED(CONFIG_ZMK_SPLIT_PERIPHERAL_HID_INDICATORS)
 
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_KINESIS_SYNC)
+
+// Broadcast to every connected peripheral and cache for replay when a peripheral becomes ready.
+// Never blocks. Returns 0 (also with no peripheral connected) or -errno.
+int zmk_split_central_update_kinesis_led(uint8_t layer, uint8_t effect, bool on);
+int zmk_split_central_update_kinesis_backlight(uint8_t brightness, bool on);
+
+#endif // IS_ENABLED(CONFIG_ZMK_SPLIT_KINESIS_SYNC)
+
 #if IS_ENABLED(CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING)
 
 int zmk_split_central_get_peripheral_battery_level(uint8_t source, uint8_t *level);

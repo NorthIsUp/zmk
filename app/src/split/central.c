@@ -10,6 +10,9 @@
 #include <zmk/split/transport/central.h>
 #include <zmk/split/central.h>
 #include <zmk/hid_indicators_types.h>
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_PERIPHERAL_HID_INDICATORS)
+#include <zmk/hid_indicators.h>
+#endif
 #include <zmk/pointing/input_split.h>
 
 #include <zephyr/logging/log.h>
@@ -150,6 +153,73 @@ int zmk_split_central_update_hid_indicator(zmk_hid_indicators_t indicators) {
 
 #endif // IS_ENABLED(CONFIG_ZMK_SPLIT_PERIPHERAL_HID_INDICATORS)
 
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_KINESIS_SYNC)
+
+// Unlike zmk_split_central_update_hid_indicator, which reuses `ret` as the loop bound and so
+// only reaches the first peripheral.
+static int broadcast_command(struct zmk_split_transport_central_command command) {
+    if (!active_transport || !active_transport->api ||
+        !active_transport->api->get_available_source_ids || !active_transport->api->send_command) {
+        return 0;
+    }
+
+    uint8_t source_ids[ZMK_SPLIT_CENTRAL_PERIPHERAL_COUNT];
+    int count = active_transport->api->get_available_source_ids(source_ids);
+    if (count < 0) {
+        return count;
+    }
+
+    for (int i = 0; i < count; i++) {
+        int err = active_transport->api->send_command(source_ids[i], command);
+        if (err < 0) {
+            return err;
+        }
+    }
+
+    return 0;
+}
+
+// Last state sent, replayed when a peripheral becomes ready. `.type` stays POLL_EVENTS (0)
+// until the first update, so state that was never set is never replayed.
+static struct zmk_split_transport_central_command kinesis_led_cmd;
+static struct zmk_split_transport_central_command kinesis_bl_cmd;
+
+int zmk_split_central_update_kinesis_led(uint8_t layer, uint8_t effect, bool on) {
+    kinesis_led_cmd = (struct zmk_split_transport_central_command){
+        .type = ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_SET_KINESIS_LED,
+        .data = {.set_kinesis_led = {.layer = layer, .effect = effect, .on = on}},
+    };
+    return broadcast_command(kinesis_led_cmd);
+}
+
+int zmk_split_central_update_kinesis_backlight(uint8_t brightness, bool on) {
+    kinesis_bl_cmd = (struct zmk_split_transport_central_command){
+        .type = ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_SET_KINESIS_BACKLIGHT,
+        .data = {.set_kinesis_backlight = {.brightness = brightness, .on = on}},
+    };
+    return broadcast_command(kinesis_bl_cmd);
+}
+
+// Review Focus 1: a peripheral that (re)connects gets the current lighting state. Transports
+// only report "ready" statuses once writes can land (BLE: handles found and link encrypted).
+static void resend_peripheral_state(void) {
+    if (kinesis_led_cmd.type) {
+        broadcast_command(kinesis_led_cmd);
+    }
+    if (kinesis_bl_cmd.type) {
+        broadcast_command(kinesis_bl_cmd);
+    }
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_PERIPHERAL_HID_INDICATORS)
+    // The Kinesis pin carried indicators in its LED payload; they now travel as their own command.
+    broadcast_command((struct zmk_split_transport_central_command){
+        .type = ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_SET_HID_INDICATORS,
+        .data = {.set_hid_indicators = {.indicators = zmk_hid_indicators_get_current_profile()}},
+    });
+#endif
+}
+
+#endif // IS_ENABLED(CONFIG_ZMK_SPLIT_KINESIS_SYNC)
+
 #if IS_ENABLED(CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING)
 
 int zmk_split_central_get_peripheral_battery_level(uint8_t source, uint8_t *level) {
@@ -204,6 +274,9 @@ static int transport_status_changed_cb(const struct zmk_split_transport_central 
         if (status.connections == ZMK_SPLIT_TRANSPORT_CONNECTIONS_STATUS_DISCONNECTED) {
             return select_first_available_transport();
         }
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_KINESIS_SYNC)
+        resend_peripheral_state();
+#endif
     } else {
         // Just to be sure, in case a higher priority transport becomes available
         select_first_available_transport();

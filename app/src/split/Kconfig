@@ -30,6 +30,20 @@ config ZMK_SPLIT_PERIPHERAL_HID_INDICATORS
     help
       Enable propagating the HID (LED) Indicator state to the split peripheral(s).
 
+config ZMK_SPLIT_KINESIS_SYNC
+    bool "Sync Kinesis underglow and backlight state from central to peripherals"
+    default y if ZMK_RGB_UNDERGLOW || ZMK_BACKLIGHT
+
+config ZMK_SPLIT_CENTRAL_KINESIS_LED_QUEUE_SIZE
+    int "Queued LED sync commands to peripherals"
+    depends on ZMK_SPLIT_ROLE_CENTRAL && ZMK_SPLIT_KINESIS_SYNC
+    default 5
+
+config ZMK_SPLIT_CENTRAL_KINESIS_BL_QUEUE_SIZE
+    int "Queued backlight sync commands to peripherals"
+    depends on ZMK_SPLIT_ROLE_CENTRAL && ZMK_SPLIT_KINESIS_SYNC
+    default 5
+
 endif # ZMK_SPLIT
 
 rsource "bluetooth/Kconfig"
