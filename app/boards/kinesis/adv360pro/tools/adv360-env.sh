@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: MIT
 #
 # adv360-env.sh up|exec <cmd...>|down|name
+# ADV360_IN_CONTAINER=1: `exec` runs the command directly (for CI, which already runs in the image).
 # One long-lived container per worktree; west workspace (zephyr + modules) in a
 # shared named volume mounted at /workspaces, worktree bind-mounted over
 # /workspaces/zmk so `west init -l zmk/app` resolves the same for every worktree.
@@ -47,7 +48,13 @@ up() {
 
 case "${1:-}" in
 up) up ;;
-exec) shift; running || up >/dev/null; docker exec -w /workspaces/zmk "$NAME" "$@" ;;
+exec)
+    shift
+    # CI already runs inside the build image with the checkout at /workspaces/zmk.
+    if [ -n "${ADV360_IN_CONTAINER:-}" ]; then cd /workspaces/zmk && exec "$@"; fi
+    running || up >/dev/null
+    docker exec -w /workspaces/zmk "$NAME" "$@"
+    ;;
 down) docker rm -f "$NAME" >/dev/null ;;
 name) echo "$NAME" ;;
 *) echo "usage: $0 up|exec <cmd...>|down|name" >&2; exit 2 ;;
