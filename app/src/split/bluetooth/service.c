@@ -139,6 +139,70 @@ static ssize_t split_svc_get_selected_phys_layout(struct bt_conn *conn,
     return bt_gatt_attr_read(conn, attrs, buf, len, offset, &selected, sizeof(selected));
 }
 
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_KINESIS_SYNC)
+
+static struct zmk_split_transport_central_command kinesis_led_cmd = {
+    .type = ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_SET_KINESIS_LED};
+static struct zmk_split_transport_central_command kinesis_bl_cmd = {
+    .type = ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_SET_KINESIS_BACKLIGHT};
+
+// K3 wire layout: the central writes these union members as-is.
+BUILD_ASSERT(sizeof(kinesis_led_cmd.data.set_kinesis_led) == 3, "K3: LED payload is 3 bytes");
+BUILD_ASSERT(sizeof(kinesis_bl_cmd.data.set_kinesis_backlight) == 2, "K3: BL payload is 2 bytes");
+
+static void split_svc_kinesis_led_callback(struct k_work *work) {
+    zmk_split_transport_peripheral_command_handler(zmk_split_transport_peripheral_bt(),
+                                                   kinesis_led_cmd);
+}
+
+static void split_svc_kinesis_bl_callback(struct k_work *work) {
+    zmk_split_transport_peripheral_command_handler(zmk_split_transport_peripheral_bt(),
+                                                   kinesis_bl_cmd);
+}
+
+static K_WORK_DEFINE(split_svc_kinesis_led_work, split_svc_kinesis_led_callback);
+static K_WORK_DEFINE(split_svc_kinesis_bl_work, split_svc_kinesis_bl_callback);
+
+// GATT writes arrive on the BT RX thread; the dispatcher runs on the system work queue.
+static ssize_t split_svc_update_led(struct bt_conn *conn, const struct bt_gatt_attr *attr,
+                                    const void *buf, uint16_t len, uint16_t offset, uint8_t flags) {
+    const uint8_t *data = buf;
+
+    if (offset != 0) {
+        return BT_GATT_ERR(BT_ATT_ERR_INVALID_OFFSET);
+    }
+    if (len != sizeof(kinesis_led_cmd.data.set_kinesis_led)) {
+        return BT_GATT_ERR(BT_ATT_ERR_INVALID_ATTRIBUTE_LEN);
+    }
+
+    kinesis_led_cmd.data.set_kinesis_led.layer = data[0];
+    kinesis_led_cmd.data.set_kinesis_led.effect = data[1];
+    kinesis_led_cmd.data.set_kinesis_led.on = data[2] != 0;
+    k_work_submit(&split_svc_kinesis_led_work);
+
+    return len;
+}
+
+static ssize_t split_svc_update_bl(struct bt_conn *conn, const struct bt_gatt_attr *attr,
+                                   const void *buf, uint16_t len, uint16_t offset, uint8_t flags) {
+    const uint8_t *data = buf;
+
+    if (offset != 0) {
+        return BT_GATT_ERR(BT_ATT_ERR_INVALID_OFFSET);
+    }
+    if (len != sizeof(kinesis_bl_cmd.data.set_kinesis_backlight)) {
+        return BT_GATT_ERR(BT_ATT_ERR_INVALID_ATTRIBUTE_LEN);
+    }
+
+    kinesis_bl_cmd.data.set_kinesis_backlight.brightness = data[0];
+    kinesis_bl_cmd.data.set_kinesis_backlight.on = data[1] != 0;
+    k_work_submit(&split_svc_kinesis_bl_work);
+
+    return len;
+}
+
+#endif // IS_ENABLED(CONFIG_ZMK_SPLIT_KINESIS_SYNC)
+
 #if IS_ENABLED(CONFIG_ZMK_INPUT_SPLIT)
 
 static void split_input_events_ccc(const struct bt_gatt_attr *attr, uint16_t value) {
@@ -204,8 +268,17 @@ BT_GATT_SERVICE_DEFINE(
     BT_GATT_CHARACTERISTIC(BT_UUID_DECLARE_128(ZMK_SPLIT_BT_SELECT_PHYS_LAYOUT_UUID),
                            BT_GATT_CHRC_WRITE | BT_GATT_CHRC_READ,
                            BT_GATT_PERM_WRITE_ENCRYPT | BT_GATT_PERM_READ_ENCRYPT,
-                           split_svc_get_selected_phys_layout, split_svc_select_phys_layout,
-                           NULL), );
+                           split_svc_get_selected_phys_layout, split_svc_select_phys_layout, NULL),
+// Appended last: split_svc.attrs[1] and attrs[8] are notified by fixed index.
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_KINESIS_SYNC)
+    BT_GATT_CHARACTERISTIC(BT_UUID_DECLARE_128(ZMK_SPLIT_BT_CHAR_UPDATE_LED_UUID),
+                           BT_GATT_CHRC_WRITE_WITHOUT_RESP, BT_GATT_PERM_WRITE_ENCRYPT, NULL,
+                           split_svc_update_led, NULL),
+    BT_GATT_CHARACTERISTIC(BT_UUID_DECLARE_128(ZMK_SPLIT_BT_CHAR_UPDATE_BL_UUID),
+                           BT_GATT_CHRC_WRITE_WITHOUT_RESP, BT_GATT_PERM_WRITE_ENCRYPT, NULL,
+                           split_svc_update_bl, NULL),
+#endif // IS_ENABLED(CONFIG_ZMK_SPLIT_KINESIS_SYNC)
+);
 
 K_THREAD_STACK_DEFINE(service_q_stack, CONFIG_ZMK_SPLIT_BLE_PERIPHERAL_STACK_SIZE);
 
