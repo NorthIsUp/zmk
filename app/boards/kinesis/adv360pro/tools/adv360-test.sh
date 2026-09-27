@@ -9,7 +9,7 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 
 # ponytail: default set is the suites touching Kinesis features on main today;
 # sections append their new suites here.
-[ $# -gt 0 ] || set -- app/tests/backlight app/tests/toggle-layer app/tests/momentary-layer app/tests/studio
+[ $# -gt 0 ] || set -- app/tests/backlight app/tests/toggle-layer app/tests/momentary-layer app/tests/studio app/tests/rgb-underglow
 
 fail=0
 for p in "$@"; do
