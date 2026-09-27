@@ -1,0 +1,2 @@
+s/.*STP_BAT/stp/p
+s/.*hid_listener_keycode/kp/p
