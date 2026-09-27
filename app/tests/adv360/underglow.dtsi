@@ -1,0 +1,27 @@
+/*
+ * Copyright (c) 2026 The ZMK Contributors
+ *
+ * SPDX-License-Identifier: MIT
+ */
+
+#include <zephyr/dt-bindings/led/led.h>
+
+// native_sim has no LED strip; an APA102 on the emulated SPI bus lets
+// CONFIG_ZMK_RGB_UNDERGLOW build. Its writes fail with -EIO, which no test reads.
+&spi0 {
+    status = "okay";
+
+    test_strip: apa102@0 {
+        compatible = "apa,apa102";
+        reg = <0>;
+        spi-max-frequency = <1000000>;
+        chain-length = <1>;
+        color-mapping = <LED_COLOR_ID_BLUE LED_COLOR_ID_GREEN LED_COLOR_ID_RED>;
+    };
+};
+
+/ {
+    chosen {
+        zmk,underglow = &test_strip;
+    };
+};
