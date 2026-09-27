@@ -305,6 +305,11 @@ config ZMK_RGB_UNDERGLOW_BRT_MAX
     int "RGB underglow maximum brightness in percent"
     range ZMK_RGB_UNDERGLOW_BRT_MIN 100
 
+config ZMK_RGB_UNDERGLOW_BRT_SCALE
+    int "RGB underglow brightness scale factor in percent"
+    range 0 100
+    default 1
+
 config ZMK_RGB_UNDERGLOW_HUE_STEP
     int "RGB underglow hue step in degrees"
     range 0 359
@@ -335,7 +340,7 @@ config ZMK_RGB_UNDERGLOW_SPD_START
 
 config ZMK_RGB_UNDERGLOW_EFF_START
     int "RGB underglow start effect int value related to the effect enum list"
-    range 0 3
+    range 0 5
 
 config ZMK_RGB_UNDERGLOW_ON_START
     bool "RGB underglow starts on by default"
@@ -346,6 +351,11 @@ config ZMK_RGB_UNDERGLOW_AUTO_OFF_IDLE
 config ZMK_RGB_UNDERGLOW_AUTO_OFF_USB
     bool "Turn off RGB underglow when USB is disconnected"
     depends on USB_DEVICE_STACK
+
+config ZMK_RGB_UNDERGLOW_MOD_COLOR
+    hex "RGB hex color of CAPS/SCROLL/NUM LOCK indicators"
+    range 0x000000 0xFFFFFF
+    default 0xFFFFFF
 
 endif # ZMK_RGB_UNDERGLOW
 
