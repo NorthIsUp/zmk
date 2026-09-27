@@ -60,6 +60,10 @@ struct peripheral_slot {
     uint16_t update_hid_indicators;
 #endif // IS_ENABLED(CONFIG_ZMK_SPLIT_PERIPHERAL_HID_INDICATORS)
     uint16_t selected_physical_layout_handle;
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_KINESIS_SYNC)
+    uint16_t update_led_handle;
+    uint16_t update_bl_handle;
+#endif // IS_ENABLED(CONFIG_ZMK_SPLIT_KINESIS_SYNC)
     uint8_t position_state[POSITION_STATE_DATA_LEN];
     uint8_t changed_positions[POSITION_STATE_DATA_LEN];
 };
@@ -219,6 +223,10 @@ int release_peripheral_slot(int index) {
 #if IS_ENABLED(CONFIG_ZMK_SPLIT_PERIPHERAL_HID_INDICATORS)
     slot->update_hid_indicators = 0;
 #endif // IS_ENABLED(CONFIG_ZMK_SPLIT_PERIPHERAL_HID_INDICATORS)
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_KINESIS_SYNC)
+    slot->update_led_handle = 0;
+    slot->update_bl_handle = 0;
+#endif // IS_ENABLED(CONFIG_ZMK_SPLIT_KINESIS_SYNC)
 
     return 0;
 }
@@ -261,6 +269,25 @@ static void notify_transport_status(void);
 static void notify_status_work_cb(struct k_work *_work) { notify_transport_status(); }
 
 static K_WORK_DEFINE(notify_status_work, notify_status_work_cb);
+
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_KINESIS_SYNC)
+
+// The sync characteristics are PERM_WRITE_ENCRYPT: a write before L2 takes the unsupported
+// signed-write path (zmk#2461), so nothing is sent until both handles are known and encrypted.
+static bool kinesis_sync_ready(struct peripheral_slot *slot) {
+    return slot->state == PERIPHERAL_SLOT_STATE_CONNECTED && slot->update_led_handle &&
+           slot->update_bl_handle && bt_conn_get_security(slot->conn) >= BT_SECURITY_L2;
+}
+
+// Discovery and encryption finish in either order; whichever is last makes split/central.c
+// replay the cached state to this peripheral (Review Focus 1).
+static void kinesis_sync_notify_if_ready(struct peripheral_slot *slot) {
+    if (slot && kinesis_sync_ready(slot)) {
+        k_work_submit(&notify_status_work);
+    }
+}
+
+#endif // IS_ENABLED(CONFIG_ZMK_SPLIT_KINESIS_SYNC)
 
 #if ZMK_KEYMAP_HAS_SENSORS
 
@@ -620,6 +647,18 @@ static uint8_t split_central_chrc_discovery_func(struct bt_conn *conn,
             LOG_DBG("Found update HID indicators handle");
             slot->update_hid_indicators = bt_gatt_attr_value_handle(attr);
 #endif // IS_ENABLED(CONFIG_ZMK_SPLIT_PERIPHERAL_HID_INDICATORS)
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_KINESIS_SYNC)
+        } else if (!bt_uuid_cmp(((struct bt_gatt_chrc *)attr->user_data)->uuid,
+                                BT_UUID_DECLARE_128(ZMK_SPLIT_BT_CHAR_UPDATE_LED_UUID))) {
+            LOG_DBG("Found update LED handle");
+            slot->update_led_handle = bt_gatt_attr_value_handle(attr);
+            kinesis_sync_notify_if_ready(slot);
+        } else if (!bt_uuid_cmp(((struct bt_gatt_chrc *)attr->user_data)->uuid,
+                                BT_UUID_DECLARE_128(ZMK_SPLIT_BT_CHAR_UPDATE_BL_UUID))) {
+            LOG_DBG("Found update backlight handle");
+            slot->update_bl_handle = bt_gatt_attr_value_handle(attr);
+            kinesis_sync_notify_if_ready(slot);
+#endif // IS_ENABLED(CONFIG_ZMK_SPLIT_KINESIS_SYNC)
 #if IS_ENABLED(CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING)
         } else if (!bt_uuid_cmp(((struct bt_gatt_chrc *)attr->user_data)->uuid,
                                 BT_UUID_BAS_BATTERY_LEVEL)) {
@@ -695,6 +734,9 @@ static uint8_t split_central_chrc_discovery_func(struct bt_conn *conn,
 #if IS_ENABLED(CONFIG_ZMK_SPLIT_PERIPHERAL_HID_INDICATORS)
     subscribed = subscribed && slot->update_hid_indicators;
 #endif // IS_ENABLED(CONFIG_ZMK_SPLIT_PERIPHERAL_HID_INDICATORS)
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_KINESIS_SYNC)
+    subscribed = subscribed && slot->update_led_handle && slot->update_bl_handle;
+#endif // IS_ENABLED(CONFIG_ZMK_SPLIT_KINESIS_SYNC)
 #if IS_ENABLED(CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING)
     subscribed = subscribed && slot->batt_lvl_subscribe_params.value_handle;
 #endif /* IS_ENABLED(CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_FETCHING) */
@@ -986,6 +1028,11 @@ static void split_central_disconnected(struct bt_conn *conn, uint8_t reason) {
 static void split_central_security_changed(struct bt_conn *conn, bt_security_t level,
                                            enum bt_security_err err) {
     struct peripheral_slot *slot = peripheral_slot_for_conn(conn);
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_KINESIS_SYNC)
+    if (!err) {
+        kinesis_sync_notify_if_ready(slot);
+    }
+#endif // IS_ENABLED(CONFIG_ZMK_SPLIT_KINESIS_SYNC)
     if (!slot || !slot->selected_physical_layout_handle) {
         return;
     }
@@ -1102,6 +1149,65 @@ void split_central_split_run_callback(struct k_work *work) {
 
 K_WORK_DEFINE(split_central_split_run_work, split_central_split_run_callback);
 
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_KINESIS_SYNC)
+
+// Lighting sync stays off zmk_split_central_split_run_msgq: that queue's 100 ms blocking put
+// and drop-oldest could stall the system work queue or evict an INVOKE_BEHAVIOR (Review
+// Focus 2). One queue per type, so an LED burst never evicts the latest backlight state.
+K_MSGQ_DEFINE(kinesis_led_msgq, sizeof(struct central_cmd_wrapper),
+              CONFIG_ZMK_SPLIT_CENTRAL_KINESIS_LED_QUEUE_SIZE, 4);
+K_MSGQ_DEFINE(kinesis_bl_msgq, sizeof(struct central_cmd_wrapper),
+              CONFIG_ZMK_SPLIT_CENTRAL_KINESIS_BL_QUEUE_SIZE, 4);
+
+static void kinesis_sync_write(const struct central_cmd_wrapper *w) {
+    struct peripheral_slot *slot = &peripherals[w->source];
+
+    // Not ready: drop. The ready notification replays the cached state.
+    if (!kinesis_sync_ready(slot)) {
+        LOG_DBG("Peripheral %d not ready for Kinesis sync", w->source);
+        return;
+    }
+
+    // K3: the union members are the wire layout (3 and 2 bytes).
+    int err = w->cmd.type == ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_SET_KINESIS_LED
+                  ? bt_gatt_write_without_response(slot->conn, slot->update_led_handle,
+                                                   &w->cmd.data.set_kinesis_led,
+                                                   sizeof(w->cmd.data.set_kinesis_led), true)
+                  : bt_gatt_write_without_response(slot->conn, slot->update_bl_handle,
+                                                   &w->cmd.data.set_kinesis_backlight,
+                                                   sizeof(w->cmd.data.set_kinesis_backlight), true);
+    if (err) {
+        LOG_ERR("Failed to write Kinesis sync characteristic (err %d)", err);
+    }
+}
+
+static void kinesis_sync_work_cb(struct k_work *work) {
+    struct central_cmd_wrapper w;
+
+    while (k_msgq_get(&kinesis_led_msgq, &w, K_NO_WAIT) == 0) {
+        kinesis_sync_write(&w);
+    }
+    while (k_msgq_get(&kinesis_bl_msgq, &w, K_NO_WAIT) == 0) {
+        kinesis_sync_write(&w);
+    }
+}
+
+static K_WORK_DEFINE(kinesis_sync_work, kinesis_sync_work_cb);
+
+// Never blocks: when full, the oldest entry goes. State is absolute, so only stale state is lost.
+static int kinesis_sync_enqueue(struct k_msgq *q, struct central_cmd_wrapper w) {
+    while (k_msgq_put(q, &w, K_NO_WAIT) != 0) {
+        struct central_cmd_wrapper discarded;
+        k_msgq_get(q, &discarded, K_NO_WAIT);
+        LOG_DBG("Kinesis sync queue full, dropped oldest");
+    }
+
+    k_work_submit_to_queue(&split_central_split_run_q, &kinesis_sync_work);
+    return 0;
+}
+
+#endif // IS_ENABLED(CONFIG_ZMK_SPLIT_KINESIS_SYNC)
+
 static int split_bt_invoke_behavior_payload(struct central_cmd_wrapper payload_wrapper) {
     LOG_DBG("");
 
@@ -1180,6 +1286,14 @@ static int split_central_bt_send_command(uint8_t source,
         struct central_cmd_wrapper wrapper = {.source = source, .cmd = cmd};
         return split_bt_invoke_behavior_payload(wrapper);
     }
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_KINESIS_SYNC)
+    case ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_SET_KINESIS_LED:
+        return kinesis_sync_enqueue(&kinesis_led_msgq,
+                                    (struct central_cmd_wrapper){.source = source, .cmd = cmd});
+    case ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_SET_KINESIS_BACKLIGHT:
+        return kinesis_sync_enqueue(&kinesis_bl_msgq,
+                                    (struct central_cmd_wrapper){.source = source, .cmd = cmd});
+#endif // IS_ENABLED(CONFIG_ZMK_SPLIT_KINESIS_SYNC)
     case ZMK_SPLIT_TRANSPORT_CENTRAL_CMD_TYPE_POLL_EVENTS:
         return -ENOTSUP;
     default:

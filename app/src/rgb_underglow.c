@@ -30,6 +30,9 @@
 #include <zmk/ble.h>
 #include <zmk/keymap.h>
 #include <zmk/split/bluetooth/peripheral.h>
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL) && IS_ENABLED(CONFIG_ZMK_SPLIT_KINESIS_SYNC)
+#include <zmk/split/central.h>
+#endif
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -189,6 +192,12 @@ static void zmk_rgb_underglow_central_send(void) {
     LOG_DBG("layer %d left #%06x right #%06x effect %d on %d", led_data.layer,
             led_rgb_hex(LAYER_COLORS[left]), led_rgb_hex(LAYER_COLORS[right]), led_data.effect,
             led_data.on);
+#if IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL) && IS_ENABLED(CONFIG_ZMK_SPLIT_KINESIS_SYNC)
+    int err = zmk_split_central_update_kinesis_led(led_data.layer, led_data.effect, led_data.on);
+    if (err) {
+        LOG_ERR("Kinesis LED sync failed (err %d)", err);
+    }
+#endif
 }
 #endif
 

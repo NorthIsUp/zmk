@@ -12,8 +12,10 @@ set -euo pipefail
 IMAGE=${ADV360_IMAGE:-docker.io/zmkfirmware/zmk-build-arm:4.1}
 VOLUME=${ADV360_VOLUME:-zmk-adv360-west}
 JOBS=${ADV360_JOBS:-6}
+# ADV360_PLATFORM=linux/amd64: a second container for BabbleSim, which is 32-bit x86 only.
+PLATFORM=${ADV360_PLATFORM:-}
 WT=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
-NAME=zmk-adv360-$(basename "$WT")
+NAME=zmk-adv360-$(basename "$WT")${PLATFORM:+-${PLATFORM#*/}}
 # A worktree's .git file points at the main repo's absolute gitdir; mount it at
 # the same path so git (and Zephyr's version stamp) works inside the container.
 GITDIR=$(git -C "$WT" rev-parse --path-format=absolute --git-common-dir)
@@ -23,7 +25,7 @@ running() { [ "$(docker inspect -f '{{.State.Running}}' "$NAME" 2>/dev/null)" = 
 up() {
     if ! running; then
         docker rm -f "$NAME" >/dev/null 2>&1 || true
-        docker run -d --name "$NAME" \
+        docker run -d --name "$NAME" ${PLATFORM:+--platform "$PLATFORM"} \
             -v "$VOLUME":/workspaces \
             -v "$WT":/workspaces/zmk \
             -v "$GITDIR":"$GITDIR":ro \
