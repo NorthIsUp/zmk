@@ -37,6 +37,11 @@ fi
 testcase=$(realpath $path | sed -n -e "s|.*/tests/||p")
 echo "Running $testcase:"
 
+# A testcase that is itself a zephyr module builds its own sources, for APIs no binding reaches.
+if [ -f "$path/zephyr/module.yml" ] && [ -z "$ZMK_EXTRA_MODULES" ]; then
+    ZMK_EXTRA_MODULES="$path"
+fi
+
 build_cmd="west build ${ZMK_SRC_DIR:+-s $ZMK_SRC_DIR} -d ${ZMK_BUILD_DIR}/tests/$testcase \
     -b native_sim//zmk_test_mock -p -- -DCONFIG_ASSERT=y -DZMK_CONFIG="$(realpath $path)" \
     ${ZMK_EXTRA_MODULES:+-DZMK_EXTRA_MODULES="$(realpath ${ZMK_EXTRA_MODULES})"}"
