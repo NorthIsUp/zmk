@@ -1,0 +1,74 @@
+name: Adv360
+
+on:
+  push:
+    branches:
+      - adv360-z4.1
+      - adv360-z4.1-wip
+  pull_request:
+    branches:
+      - adv360-z4.1
+      - adv360-z4.1-wip
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  adv360:
+    runs-on: ubuntu-latest
+    container:
+      image: docker.io/zmkfirmware/zmk-build-arm:4.1
+    env:
+      ADV360_IN_CONTAINER: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Cache west modules
+        uses: actions/cache@v6
+        env:
+          cache-name: cache-zephyr-modules
+        with:
+          path: |
+            modules/
+            tools/
+            zephyr/
+            bootloader/
+          key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('app/west.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-build-${{ env.cache-name }}-
+            ${{ runner.os }}-build-
+            ${{ runner.os }}-
+        timeout-minutes: 2
+        continue-on-error: true
+      - name: Initialize workspace
+        run: |
+          git config --global --add safe.directory '*'
+          west init -l app
+          west update --fetch-opt=--filter=tree:0
+          west zephyr-export
+      - name: Put the checkout where the harness expects it
+        run: mkdir -p /workspaces && ln -sfn "$GITHUB_WORKSPACE" /workspaces/zmk
+      - name: Kconfig check
+        run: app/boards/kinesis/adv360pro/tools/adv360-kconfig-check.sh
+      - name: Build left, right, left clique; run adv360 tests
+        run: app/boards/kinesis/adv360pro/tools/adv360-all.sh --pristine
+      - name: Archive firmware
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: adv360-firmware
+          path: build/*/zephyr/zmk.uf2
+      - name: Archive logs
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: adv360-logs
+          path: |
+            build/*.log
+            build/tests/**/*.log
