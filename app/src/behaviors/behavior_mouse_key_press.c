@@ -22,11 +22,11 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 #if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
 
 static const struct behavior_parameter_value_metadata param_values[] = {
-    {.display_name = "MB1", .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE, .value = MB1},
-    {.display_name = "MB2", .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE, .value = MB2},
-    {.display_name = "MB3", .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE, .value = MB3},
-    {.display_name = "MB4", .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE, .value = MB4},
-    {.display_name = "MB5", .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE, .value = MB5}};
+    {.display_name = "Left click", .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE, .value = MB1},
+    {.display_name = "Right click", .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE, .value = MB2},
+    {.display_name = "Middle click", .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE, .value = MB3},
+    {.display_name = "MB4 click", .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE, .value = MB4},
+    {.display_name = "MB5 click", .type = BEHAVIOR_PARAMETER_VALUE_TYPE_VALUE, .value = MB5}};
 
 static const struct behavior_parameter_metadata_set param_metadata_set[] = {{
     .param1_values = param_values,
