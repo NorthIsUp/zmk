@@ -10,9 +10,19 @@ on:
       - adv360-z4.1
       - adv360-z4.1-wip
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        description: commit, branch or tag to build
+        type: string
+        required: true
+      artifact:
+        description: firmware artifact name
+        type: string
+        required: true
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ inputs.ref || github.ref }}
   cancel-in-progress: true
 
 permissions: {}
@@ -28,6 +38,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
         with:
+          ref: ${{ inputs.ref || github.ref }}
           persist-credentials: false
       - name: Cache west modules
         uses: actions/cache@v6
@@ -62,13 +73,13 @@ jobs:
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
         with:
-          name: adv360-firmware
+          name: ${{ inputs.artifact || 'adv360-firmware' }}
           path: build/*/zephyr/zmk.uf2
       - name: Archive logs
         if: ${{ failure() }}
         uses: actions/upload-artifact@v7
         with:
-          name: adv360-logs
+          name: ${{ inputs.artifact || 'adv360-firmware' }}-logs
           path: |
             build/*.log
             build/tests/**/*.log
