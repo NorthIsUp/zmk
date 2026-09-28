@@ -1,0 +1,122 @@
+name: Adv360 release
+
+# Rebases the adv360 patch stack onto the latest ZMK release and onto ZMK main,
+# builds and tests each result, and publishes zmk-<upstream>-adv360.<n> tags with
+# GitHub releases plus dated channel tags. Rules live in adv360-release-plan.sh.
+on:
+  schedule:
+    - cron: "17 7 * * *"
+  workflow_dispatch:
+    inputs:
+      target:
+        description: upstream ref for a manual snapshot (empty = upstream main)
+        type: string
+        default: ""
+
+concurrency:
+  group: adv360-release
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      plan: ${{ steps.plan.outputs.plan }}
+      builds: ${{ steps.plan.outputs.builds }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: adv360-z4.1
+          fetch-depth: 0
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET: ${{ inputs.target }}
+        run: |
+          git config user.name adv360-release
+          git config user.email adv360-release@users.noreply.github.com
+          plan=$(app/boards/kinesis/adv360pro/tools/adv360-release-plan.sh)
+          echo "$plan" | jq .
+          echo "plan=$plan" >>"$GITHUB_OUTPUT"
+          echo "builds=$(jq -c .builds <<<"$plan")" >>"$GITHUB_OUTPUT"
+
+  build:
+    needs: plan
+    if: ${{ needs.plan.outputs.builds != '[]' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        build: ${{ fromJSON(needs.plan.outputs.builds) }}
+    uses: ./.github/workflows/adv360.yml
+    with:
+      ref: ${{ matrix.build.ref }}
+      artifact: ${{ matrix.build.version }}
+
+  publish:
+    needs: [plan, build]
+    if: ${{ always() && needs.plan.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: adv360-z4.1
+          fetch-depth: 0
+      - name: Tag, release, report
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PLAN: ${{ needs.plan.outputs.plan }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          git config user.name adv360-release
+          git config user.email adv360-release@users.noreply.github.com
+          git fetch -q --no-prune origin 'refs/heads/adv360-candidate/*:refs/remotes/origin/adv360-candidate/*' \
+            'refs/tags/zmk-*:refs/tags/zmk-*' 'refs/tags/adv360-*:refs/tags/adv360-*'
+          stack=$(jq -r .stack <<<"$PLAN")
+          report() {  # one open issue per title; comments on repeats
+            n=$(gh issue list --state open --search "in:title \"$1\"" --json number -q '.[0].number')
+            if [ -n "$n" ]; then gh issue comment "$n" --body "$2"; else gh issue create --title "$1" --body "$2"; fi
+          }
+          published=""
+          while read -r b; do
+            v=$(jq -r .version <<<"$b"); ref=$(jq -r .ref <<<"$b")
+            kind=$(jq -r .kind <<<"$b"); target=$(jq -r .target <<<"$b")
+            mkdir -p "fw/$v"
+            if ! gh run download "$GITHUB_RUN_ID" -n "$v" -D "fw/$v" 2>/dev/null; then
+              report "adv360 release: $v failed to build" "Build or tests failed for \`$v\` ($kind on \`$target\`). Run: $RUN_URL"
+              continue
+            fi
+            git tag -a "$v" "origin/$ref" -m "$v" -m "stack: $stack" -m "upstream: $target" -m "kind: $kind"
+            git push -q origin "refs/tags/$v"
+            for side in left right left-studio; do
+              f=$(find "fw/$v" -path "*/$side/zephyr/zmk.uf2" | head -1)
+              [ -n "$f" ] && cp "$f" "fw/$v-$side.uf2"
+            done
+            pre=true; [ "$kind" = release ] && pre=false
+            gh release create "$v" fw/"$v"-*.uf2 --verify-tag --title "$v" --prerelease="$pre" \
+              --notes "Adv360 Pro patch stack \`$stack\` on ZMK \`$target\` ($kind). UF2s use the stock board keymap; your config repo builds your keymap from this tag."
+            git push -q origin --delete "$ref"
+            published="$published $v"
+          done < <(jq -c '.builds[]' <<<"$PLAN")
+          # Channel tags point at a version that now exists (built earlier or just published).
+          while read -r t; do
+            name=$(jq -r .name <<<"$t"); v=$(jq -r .version <<<"$t")
+            git rev-parse -q --verify "refs/tags/$v" >/dev/null || { echo "skip $name: $v not published"; continue; }
+            git tag -a "$name" "$v^{commit}" -m "$name -> $v"
+            git push -q origin "refs/tags/$name"
+            echo "tagged $name -> $v"
+          done < <(jq -c '.tags[]' <<<"$PLAN")
+          while read -r c; do
+            v=$(jq -r .version <<<"$c"); target=$(jq -r .target <<<"$c")
+            report "adv360 release: rebase conflict on $(jq -r .target <<<"$c" | cut -c1-8)" \
+              "Rebasing the adv360 stack onto upstream \`$target\` for \`$v\` conflicts in: $(jq -r '.files|join(", ")' <<<"$c"). Rebase adv360-z4.1 by hand, then re-run: $RUN_URL"
+          done < <(jq -c '.conflicts[]' <<<"$PLAN")
+          echo "published:${published:- nothing new}"
